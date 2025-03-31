@@ -124,7 +124,31 @@ export default function AddRecipe() {
       }
 
       await AsyncStorage.setItem('recipes', JSON.stringify(recipes));
-      router.replace('/(tabs)');
+
+      // Clear all fields if this was a new recipe
+      if (!id) {
+        setTitle('');
+        setIngredients([]);
+        setInstructions([]);
+        setVideoLink('');
+        setSelectedCategories([]);
+        setIsFavorite(false);
+      }
+
+      // Show success message
+      Alert.alert(
+        'Success',
+        id ? 'Recipe updated successfully' : 'Recipe added successfully',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to recipes list
+              router.replace('/(tabs)');
+            }
+          }
+        ]
+      );
     } catch (error) {
       console.error('Error saving recipe:', error);
       Alert.alert('Error', 'Failed to save recipe');

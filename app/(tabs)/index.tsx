@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, View, TextInput, ScrollView } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, View, TextInput, ScrollView, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -59,6 +60,7 @@ export default function RecipeList() {
       setError('Failed to load recipes');
     } finally {
       setIsLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -109,6 +111,32 @@ export default function RecipeList() {
     }
   };
 
+  const deleteRecipe = async (recipeId: string) => {
+    try {
+      const updatedRecipes = recipes.filter(recipe => recipe.id !== recipeId);
+      setRecipes(updatedRecipes);
+      await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+    } catch (error) {
+      console.error('Error deleting recipe:', error);
+      Alert.alert('Error', 'Failed to delete recipe');
+    }
+  };
+
+  const handleDelete = (recipeId: string) => {
+    Alert.alert(
+      'Delete Recipe',
+      'Are you sure you want to delete this recipe?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => deleteRecipe(recipeId)
+        },
+      ]
+    );
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
     loadRecipes();
@@ -129,148 +157,196 @@ export default function RecipeList() {
       onPress={() => setSelectedCategory(selectedCategory === item ? null : item)}
     >
       <ThemedText style={[
-        styles.categoryText,
-        selectedCategory === item && styles.categoryTextSelected
+        styles.categoryButtonText,
+        selectedCategory === item && styles.categoryButtonTextSelected
       ]}>
         {item}
       </ThemedText>
     </TouchableOpacity>
   );
 
-  const renderRecipe = ({ item }: { item: Recipe }) => (
-    <TouchableOpacity
-      style={styles.recipeCard}
-      onPress={() => router.push(`/(tabs)/${item.id}`)}
-    >
-      <ThemedText type="title" style={styles.recipeTitle}>{item.title}</ThemedText>
-      <View style={styles.recipeInfo}>
-        <ThemedText style={styles.recipeDate}>
-          {new Date(item.createdAt).toLocaleDateString()}
-        </ThemedText>
-        {item.categories && item.categories.length > 0 && (
-          <View style={styles.categoriesContainer}>
-            {item.categories.map((category) => (
-              <View key={category} style={styles.categoryTag}>
-                <ThemedText style={styles.categoryText}>{category}</ThemedText>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-      <View style={styles.ingredientsContainer}>
-        <ThemedText style={styles.ingredientsTitle}>Ingredients:</ThemedText>
-        {item.ingredients.map((ingredient, index) => (
-          <ThemedText key={index} style={styles.ingredient}>
-            • {ingredient.amount} {ingredient.unit} {ingredient.name}
+  const renderRightActions = (recipeId: string, isFavorite: boolean) => {
+    return (
+      <View style={styles.rightActions}>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.favoriteButton]}
+          onPress={() => toggleFavorite(recipeId)}
+        >
+          <ThemedText style={styles.actionText}>
+            {isFavorite ? '★' : '☆'}
           </ThemedText>
-        ))}
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={() => handleDelete(recipeId)}
+        >
+          <ThemedText style={styles.actionText}>🗑️</ThemedText>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    );
+  };
+
+  const renderRecipe = ({ item }: { item: Recipe }) => (
+    <Swipeable
+      renderRightActions={() => renderRightActions(item.id, item.isFavorite)}
+      overshootRight={false}
+      friction={2}
+      rightThreshold={40}
+      hitSlop={{ top: 0, bottom: 0, left: 0, right: 0 }}
+    >
+      <TouchableOpacity
+        style={styles.recipeCard}
+        onPress={() => router.push(`/(tabs)/${item.id}`)}
+      >
+        <View style={styles.recipeHeader}>
+          <ThemedText type="title" style={styles.recipeTitle}>{item.title}</ThemedText>
+          {item.isFavorite && (
+            <ThemedText style={styles.favoriteIcon}>★</ThemedText>
+          )}
+        </View>
+
+        <View style={styles.recipeInfo}>
+          <ThemedText style={styles.recipeDate}>
+            {new Date(item.createdAt).toLocaleDateString()}
+          </ThemedText>
+          {item.categories && item.categories.length > 0 && (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoriesScroll}
+            >
+              <View style={styles.categoryTagsRow}>
+                {item.categories.map((category) => (
+                  <View key={category} style={styles.categoryTag}>
+                    <ThemedText style={styles.categoryTagText}>{category}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+
+        <View style={styles.ingredientPreview}>
+          <ThemedText style={styles.ingredientCount}>
+            {item.ingredients.length} ingredients
+          </ThemedText>
+          <ThemedText style={styles.previewText} numberOfLines={1} ellipsizeMode="tail">
+            {item.ingredients.map(i => i.name).join(', ')}
+          </ThemedText>
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
   );
 
   if (isLoading && !refreshing) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.container}>
-          <View style={styles.header}>
-            <Logo size={32} />
-            <ThemedText type="title">My Recipes</ThemedText>
-          </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#0a7ea4" />
-            <ThemedText style={styles.loadingText}>Loading recipes...</ThemedText>
-          </View>
-        </ThemedView>
-      </SafeAreaView>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaView style={styles.safeArea}>
+          <ThemedView style={styles.container}>
+            <View style={styles.header}>
+              <Logo size={32} />
+              <ThemedText type="title">My Recipes</ThemedText>
+            </View>
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#0a7ea4" />
+              <ThemedText style={styles.loadingText}>Loading recipes...</ThemedText>
+            </View>
+          </ThemedView>
+        </SafeAreaView>
+      </GestureHandlerRootView>
     );
   }
 
   if (error) {
     return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaView style={styles.safeArea}>
+          <ThemedView style={styles.container}>
+            <View style={styles.header}>
+              <Logo size={32} />
+              <ThemedText type="title">My Recipes</ThemedText>
+            </View>
+            <View style={styles.errorContainer}>
+              <ThemedText style={styles.errorText}>{error}</ThemedText>
+              <TouchableOpacity style={styles.retryButton} onPress={handleError}>
+                <ThemedText style={styles.retryText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        </SafeAreaView>
+      </GestureHandlerRootView>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.container}>
           <View style={styles.header}>
             <Logo size={32} />
             <ThemedText type="title">My Recipes</ThemedText>
           </View>
-          <View style={styles.errorContainer}>
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
-            <TouchableOpacity style={styles.retryButton} onPress={handleError}>
-              <ThemedText style={styles.retryText}>Retry</ThemedText>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search recipes..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#666"
+            />
+          </View>
+          <View style={styles.filterContainer}>
+            <TouchableOpacity
+              style={[
+                styles.favoriteFilter,
+                showFavorites && styles.favoriteFilterActive
+              ]}
+              onPress={() => setShowFavorites(!showFavorites)}
+            >
+              <ThemedText style={[
+                styles.favoriteFilterText,
+                showFavorites && styles.favoriteFilterTextActive
+              ]}>
+                {showFavorites ? '★ Favorites' : '☆ Favorites'}
+              </ThemedText>
             </TouchableOpacity>
           </View>
+          <View style={styles.categoriesContainer}>
+            <FlatList
+              data={DEFAULT_CATEGORIES}
+              renderItem={renderCategory}
+              keyExtractor={(item) => item}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoriesList}
+            />
+          </View>
+          {recipes.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <ThemedText style={styles.emptyText}>No recipes yet.</ThemedText>
+              <ThemedText style={styles.emptySubtext}>Add your first recipe to get started!</ThemedText>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredRecipes}
+              renderItem={renderRecipe}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.list}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <ThemedText style={styles.emptyText}>No recipes found</ThemedText>
+                  <ThemedText style={styles.emptySubtext}>
+                    {searchQuery ? 'Try adjusting your search' : 'Add a recipe to get started'}
+                  </ThemedText>
+                </View>
+              }
+            />
+          )}
         </ThemedView>
       </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ThemedView style={styles.container}>
-        <View style={styles.header}>
-          <Logo size={32} />
-          <ThemedText type="title">My Recipes</ThemedText>
-        </View>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search recipes..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor="#666"
-          />
-        </View>
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[
-              styles.favoriteFilter,
-              showFavorites && styles.favoriteFilterActive
-            ]}
-            onPress={() => setShowFavorites(!showFavorites)}
-          >
-            <ThemedText style={[
-              styles.favoriteFilterText,
-              showFavorites && styles.favoriteFilterTextActive
-            ]}>
-              {showFavorites ? '★ Favorites' : '☆ Favorites'}
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.categoriesContainer}>
-          <FlatList
-            data={DEFAULT_CATEGORIES}
-            renderItem={renderCategory}
-            keyExtractor={(item) => item}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesList}
-          />
-        </View>
-        {recipes.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>No recipes yet.</ThemedText>
-            <ThemedText style={styles.emptySubtext}>Add your first recipe to get started!</ThemedText>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredRecipes}
-            renderItem={renderRecipe}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.list}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <ThemedText style={styles.emptyText}>No recipes found</ThemedText>
-                <ThemedText style={styles.emptySubtext}>
-                  {searchQuery ? 'Try adjusting your search' : 'Add a recipe to get started'}
-                </ThemedText>
-              </View>
-            }
-          />
-        )}
-      </ThemedView>
-    </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -343,26 +419,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a7ea4',
     borderColor: '#0a7ea4',
   },
-  categoryTag: {
-    backgroundColor: '#e0e0e0',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  categoryText: {
-    fontSize: 12,
+  categoryButtonText: {
+    fontSize: 14,
     color: '#666',
   },
-  categoryTextSelected: {
+  categoryButtonTextSelected: {
     color: 'white',
+  },
+  categoryTag: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  categoryTagText: {
+    fontSize: 12,
+    color: '#666',
   },
   list: {
     gap: 16,
     paddingVertical: 16,
   },
   recipeCard: {
-    padding: 16,
+    padding: 12,
     borderRadius: 8,
     backgroundColor: '#f5f5f5',
     shadowColor: '#000',
@@ -371,31 +452,47 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  recipeTitle: {
-    flex: 1,
-    marginRight: 8,
-  },
-  recipeInfo: {
+  recipeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
+  },
+  recipeTitle: {
+    flex: 1,
+    fontSize: 18,
+    marginRight: 8,
+  },
+  favoriteIcon: {
+    fontSize: 20,
+    color: '#FF8C00',
+  },
+  recipeInfo: {
+    marginBottom: 8,
+    gap: 4,
   },
   recipeDate: {
     color: '#666',
-    fontSize: 14,
+    fontSize: 12,
   },
-  ingredientsContainer: {
-    marginTop: 12,
+  categoriesScroll: {
+    marginRight: -12,
   },
-  ingredientsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+  categoryTagsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingRight: 12,
   },
-  ingredient: {
-    fontSize: 14,
-    marginLeft: 8,
-    marginBottom: 2,
+  ingredientPreview: {
+    marginTop: 4,
+  },
+  ingredientCount: {
+    fontSize: 12,
+    color: '#666',
+  },
+  previewText: {
+    fontSize: 13,
+    color: '#333',
   },
   loadingContainer: {
     flex: 1,
@@ -444,5 +541,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  actionButton: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 64,
+    height: '100%',
+    borderRadius: 8,
+  },
+  favoriteButton: {
+    backgroundColor: '#FF8C00',
+    marginRight: 8,
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+  },
+  actionText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: '600',
   },
 });
