@@ -28,6 +28,7 @@ export default function AddRecipe() {
   const [instructions, setInstructions] = useState<string[]>([]);
   const [videoLink, setVideoLink] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
   const [selectedIngredientIndex, setSelectedIngredientIndex] = useState<number | null>(null);
@@ -59,6 +60,7 @@ export default function AddRecipe() {
           setInstructions(recipe.instructions);
           setVideoLink(recipe.videoLink || '');
           setSelectedCategories(recipe.categories || []);
+          setIsFavorite(recipe.isFavorite || false);
         }
       }
     } catch (error) {
@@ -68,49 +70,64 @@ export default function AddRecipe() {
   };
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
-      return;
-    }
-
-    if (ingredients.length === 0) {
-      Alert.alert('Error', 'Please add at least one ingredient');
-      return;
-    }
-
-    if (instructions.length === 0) {
-      Alert.alert('Error', 'Please add at least one instruction');
-      return;
-    }
-
-    setIsLoading(true);
     try {
+      if (!title.trim()) {
+        Alert.alert('Error', 'Please enter a recipe title');
+        return;
+      }
+
+      if (ingredients.length === 0) {
+        Alert.alert('Error', 'Please add at least one ingredient');
+        return;
+      }
+
+      if (instructions.length === 0) {
+        Alert.alert('Error', 'Please add at least one instruction');
+        return;
+      }
+
       const storedRecipes = await AsyncStorage.getItem('recipes');
-      const recipes = storedRecipes ? JSON.parse(storedRecipes) : [];
+      const recipes: Recipe[] = storedRecipes ? JSON.parse(storedRecipes) : [];
       
-      const existingRecipe = recipes.find((r: Recipe) => r.id === id);
+      // Check for duplicate title (case insensitive)
+      const normalizedTitle = title.trim().toLowerCase();
+      const existingRecipe = recipes.find(r => 
+        r.title.toLowerCase() === normalizedTitle && r.id !== id
+      );
+      
+      if (existingRecipe) {
+        Alert.alert('Error', 'A recipe with this title already exists');
+        return;
+      }
+
+      const recipeId = id || `recipe_${Date.now()}`;
       const newRecipe: Recipe = {
-        id: id || Date.now().toString(),
+        id: recipeId,
         title: title.trim(),
         ingredients: ingredients.filter(i => i.name.trim()),
         instructions: instructions.filter(i => i.trim()),
         videoLink: videoLink.trim(),
+        createdAt: Date.now(),
         categories: selectedCategories,
-        createdAt: existingRecipe?.createdAt || Date.now(),
-        isFavorite: existingRecipe?.isFavorite || false,
+        isFavorite: isFavorite,
       };
+      
+      if (id) {
+        // Update existing recipe
+        const index = recipes.findIndex(r => r.id === id);
+        if (index !== -1) {
+          recipes[index] = { ...recipes[index], ...newRecipe };
+        }
+      } else {
+        // Add new recipe
+        recipes.push(newRecipe);
+      }
 
-      const updatedRecipes = id
-        ? recipes.map((r: Recipe) => r.id === id ? newRecipe : r)
-        : [...recipes, newRecipe];
-
-      await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
-      router.back();
+      await AsyncStorage.setItem('recipes', JSON.stringify(recipes));
+      router.replace('/(tabs)');
     } catch (error) {
       console.error('Error saving recipe:', error);
       Alert.alert('Error', 'Failed to save recipe');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -332,7 +349,20 @@ export default function AddRecipe() {
           <ThemedText type="title">{id ? 'Edit Recipe' : 'Add Recipe'}</ThemedText>
           
           <View style={styles.inputContainer}>
-            <ThemedText type="subtitle">Title</ThemedText>
+            <View style={styles.titleHeader}>
+              <ThemedText type="subtitle">Title</ThemedText>
+              <TouchableOpacity
+                style={[styles.favoriteButton, isFavorite && styles.favoriteButtonActive]}
+                onPress={() => setIsFavorite(!isFavorite)}
+              >
+                <ThemedText style={[
+                  styles.favoriteButtonText,
+                  isFavorite && styles.favoriteButtonTextActive
+                ]}>
+                  {isFavorite ? '★ Favorite' : '☆ Favorite'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.input}
               value={title}
@@ -830,5 +860,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 4,
+  },
+  titleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  favoriteButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  favoriteButtonActive: {
+    backgroundColor: '#0a7ea4',
+    borderColor: '#0a7ea4',
+  },
+  favoriteButtonText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  favoriteButtonTextActive: {
+    color: 'white',
   },
 }); 

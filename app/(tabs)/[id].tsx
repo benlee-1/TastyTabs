@@ -8,7 +8,8 @@ import { ThemedText } from '@/components/ThemedText';
 import { Recipe } from '@/types/Recipe';
 
 export default function RecipeDetail() {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const id = typeof params.id === 'string' ? params.id : '';
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +25,27 @@ export default function RecipeDetail() {
       const storedRecipes = await AsyncStorage.getItem('recipes');
       if (storedRecipes) {
         const recipes: Recipe[] = JSON.parse(storedRecipes);
-        const found = recipes.find(r => r.id === id);
-        setRecipe(found || null);
+        // Try exact match first
+        let found = recipes.find(r => r.id === id);
+        
+        // If not found, try matching without 'recipe_' prefix
+        if (!found && id?.startsWith('recipe_')) {
+          found = recipes.find(r => r.id === id.replace('recipe_', ''));
+        }
+        // If still not found, try matching with 'recipe_' prefix
+        if (!found && !id?.startsWith('recipe_')) {
+          found = recipes.find(r => r.id === `recipe_${id}`);
+        }
+
+        if (!found) {
+          console.log('Recipe not found. ID:', id);
+          console.log('Available recipes:', recipes.map(r => r.id));
+          setError('Recipe not found');
+        } else {
+          setRecipe(found);
+        }
+      } else {
+        setError('No recipes found');
       }
     } catch (error) {
       console.error('Error loading recipe:', error);
@@ -101,6 +121,27 @@ Shared from TastyTabs
     }
   };
 
+  const toggleFavorite = async () => {
+    if (!recipe) return;
+
+    try {
+      const storedRecipes = await AsyncStorage.getItem('recipes');
+      if (storedRecipes) {
+        const recipes: Recipe[] = JSON.parse(storedRecipes);
+        const updatedRecipes = recipes.map(r => 
+          r.id === recipe.id
+            ? { ...r, isFavorite: !r.isFavorite }
+            : r
+        );
+        await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+        setRecipe({ ...recipe, isFavorite: !recipe.isFavorite });
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      Alert.alert('Error', 'Failed to update favorite status');
+    }
+  };
+
   if (isLoading) {
     return (
       <ThemedView style={styles.container}>
@@ -160,37 +201,99 @@ Shared from TastyTabs
           title: recipe.title,
           headerBackTitle: 'Back',
           headerRight: () => (
-            <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
-              <ThemedText style={styles.shareButtonText}>Share</ThemedText>
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity onPress={toggleFavorite} style={styles.headerButton}>
+                <ThemedText style={[styles.headerButtonText, recipe.isFavorite && styles.favoriteActive]}>
+                  {recipe.isFavorite ? '★' : '☆'}
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
+                <ThemedText style={styles.headerButtonText}>Share</ThemedText>
+              </TouchableOpacity>
+            </View>
           ),
         }} 
       />
-      <ScrollView style={styles.scrollView}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>Ingredients</ThemedText>
-          {recipe.ingredients.map((ingredient, index) => (
-            <ThemedText key={index} style={styles.ingredient}>
-              • {ingredient.amount} {ingredient.unit} {ingredient.name}
-            </ThemedText>
-          ))}
+          {/* Recipe Header */}
+          <View style={styles.recipeHeader}>
+            <ThemedText type="title" style={styles.recipeTitle}>{recipe.title}</ThemedText>
+            <View style={styles.metaInfo}>
+              <ThemedText style={styles.dateText}>
+                Added {new Date(recipe.createdAt).toLocaleDateString()}
+              </ThemedText>
+              {recipe.isFavorite && (
+                <View style={styles.favoriteTag}>
+                  <ThemedText style={styles.favoriteTagText}>★ Favorite</ThemedText>
+                </View>
+              )}
+            </View>
+            {recipe.categories && recipe.categories.length > 0 && (
+              <View style={styles.categoriesContainer}>
+                {recipe.categories.map((category) => (
+                  <View key={category} style={styles.categoryTag}>
+                    <ThemedText style={styles.categoryText}>{category}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
 
-          <ThemedText type="subtitle" style={styles.sectionTitle}>Instructions</ThemedText>
-          {recipe.instructions.map((instruction, index) => (
-            <ThemedText key={index} style={styles.instruction}>
-              {index + 1}. {instruction}
-            </ThemedText>
-          ))}
+          {/* Ingredients Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ThemedText type="subtitle" style={styles.sectionTitle}>Ingredients</ThemedText>
+              <ThemedText style={styles.servingInfo}>{recipe.ingredients.length} items</ThemedText>
+            </View>
+            <View style={styles.ingredientsContainer}>
+              {recipe.ingredients.map((ingredient, index) => (
+                <View key={index} style={styles.ingredientRow}>
+                  <View style={styles.ingredientAmount}>
+                    <ThemedText style={styles.ingredientText}>
+                      {ingredient.amount} {ingredient.unit}
+                    </ThemedText>
+                  </View>
+                  <View style={styles.ingredientDivider} />
+                  <ThemedText style={styles.ingredientText}>
+                    {ingredient.name}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          </View>
 
+          {/* Instructions Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <ThemedText type="subtitle" style={styles.sectionTitle}>Instructions</ThemedText>
+              <ThemedText style={styles.servingInfo}>{recipe.instructions.length} steps</ThemedText>
+            </View>
+            <View style={styles.instructionsContainer}>
+              {recipe.instructions.map((instruction, index) => (
+                <View key={index} style={styles.instructionRow}>
+                  <View style={styles.stepNumber}>
+                    <ThemedText style={styles.stepNumberText}>{index + 1}</ThemedText>
+                  </View>
+                  <ThemedText style={styles.instructionText}>
+                    {instruction}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Video Tutorial Section */}
           {recipe.videoLink && (
-            <>
+            <View style={styles.section}>
               <ThemedText type="subtitle" style={styles.sectionTitle}>Video Tutorial</ThemedText>
-              <TouchableOpacity style={styles.videoLink} onPress={handleVideoLink}>
-                <ThemedText style={styles.link}>Watch Video</ThemedText>
+              <TouchableOpacity style={styles.videoLinkButton} onPress={handleVideoLink}>
+                <ThemedText style={styles.videoLinkText}>Watch Video</ThemedText>
               </TouchableOpacity>
-            </>
+            </View>
           )}
 
+          {/* Action Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={[styles.button, styles.editButton]}
@@ -222,6 +325,165 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingTop: 32,
+  },
+  recipeHeader: {
+    marginBottom: 32,
+    paddingTop: 12,
+  },
+  recipeTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  metaInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  favoriteTag: {
+    backgroundColor: '#FFE5B4',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  favoriteTagText: {
+    color: '#FF8C00',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  categoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryTag: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  categoryText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  section: {
+    marginBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  servingInfo: {
+    fontSize: 14,
+    color: '#666',
+  },
+  ingredientsContainer: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ingredientAmount: {
+    width: 100,
+  },
+  ingredientDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: '#ddd',
+    marginHorizontal: 12,
+  },
+  ingredientText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  instructionsContainer: {
+    gap: 16,
+  },
+  instructionRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#0a7ea4',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepNumberText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  instructionText: {
+    fontSize: 16,
+    flex: 1,
+    lineHeight: 24,
+  },
+  videoLinkButton: {
+    backgroundColor: '#f0f0f0',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoLinkText: {
+    color: '#0a7ea4',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  buttonContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  button: {
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editButton: {
+    backgroundColor: '#0a7ea4',
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  headerButton: {
+    marginRight: 16,
+  },
+  headerButtonText: {
+    color: '#0a7ea4',
+    fontSize: 20,
+  },
+  favoriteActive: {
+    color: '#FF8C00',
   },
   loadingContainer: {
     flex: 1,
@@ -253,60 +515,6 @@ const styles = StyleSheet.create({
   },
   retryText: {
     color: 'white',
-    fontSize: 16,
-  },
-  sectionTitle: {
-    marginTop: 24,
-    marginBottom: 12,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  ingredient: {
-    marginLeft: 10,
-    marginBottom: 8,
-    fontSize: 16,
-  },
-  instruction: {
-    marginLeft: 10,
-    marginBottom: 12,
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  videoLink: {
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
-    marginLeft: 10,
-  },
-  link: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
-  buttonContainer: {
-    marginTop: 32,
-    gap: 12,
-  },
-  button: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  editButton: {
-    backgroundColor: '#007AFF',
-  },
-  deleteButton: {
-    backgroundColor: '#FF3B30',
-  },
-  shareButton: {
-    marginRight: 16,
-  },
-  shareButtonText: {
-    color: '#007AFF',
     fontSize: 16,
   },
 }); 

@@ -28,20 +28,37 @@ export default function RecipeList() {
   }, [searchQuery, recipes, selectedCategory, showFavorites]);
 
   const loadRecipes = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const storedRecipes = await AsyncStorage.getItem('recipes');
       if (storedRecipes) {
-        const parsedRecipes = JSON.parse(storedRecipes);
-        // Sort recipes by creation date, newest first
-        parsedRecipes.sort((a: Recipe, b: Recipe) => b.createdAt - a.createdAt);
-        setRecipes(parsedRecipes);
+        let recipes: Recipe[] = JSON.parse(storedRecipes);
+        
+        // Migrate old recipe IDs to new format
+        let hasChanges = false;
+        recipes = recipes.map(recipe => {
+          if (!recipe.id.startsWith('recipe_')) {
+            hasChanges = true;
+            return { ...recipe, id: `recipe_${recipe.id}` };
+          }
+          return recipe;
+        });
+        
+        // Save migrated recipes if any changes were made
+        if (hasChanges) {
+          await AsyncStorage.setItem('recipes', JSON.stringify(recipes));
+        }
+
+        // Sort recipes by creation date (newest first)
+        recipes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setRecipes(recipes);
       }
     } catch (error) {
       console.error('Error loading recipes:', error);
       setError('Failed to load recipes');
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -123,7 +140,7 @@ export default function RecipeList() {
   const renderRecipe = ({ item }: { item: Recipe }) => (
     <TouchableOpacity
       style={styles.recipeCard}
-      onPress={() => router.push(`/recipe/${item.id}`)}
+      onPress={() => router.push(`/(tabs)/${item.id}`)}
     >
       <ThemedText type="title" style={styles.recipeTitle}>{item.title}</ThemedText>
       <View style={styles.recipeInfo}>
