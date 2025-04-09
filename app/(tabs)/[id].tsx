@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, ScrollView, TouchableOpacity, Alert, View, ActivityIndicator, Linking, Share } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
-import { Recipe } from '@/types/Recipe';
+import { Recipe } from '@/app/types/Recipe';
+import { getRecipeById, deleteRecipe, toggleFavoriteRecipe } from '../services/db';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 export default function RecipeDetail() {
   const params = useLocalSearchParams();
@@ -14,38 +15,20 @@ export default function RecipeDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadRecipe();
-  }, [id]);
-
   const loadRecipe = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const storedRecipes = await AsyncStorage.getItem('recipes');
-      if (storedRecipes) {
-        const recipes: Recipe[] = JSON.parse(storedRecipes);
-        // Try exact match first
-        let found = recipes.find(r => r.id === id);
-        
-        // If not found, try matching without 'recipe_' prefix
-        if (!found && id?.startsWith('recipe_')) {
-          found = recipes.find(r => r.id === id.replace('recipe_', ''));
-        }
-        // If still not found, try matching with 'recipe_' prefix
-        if (!found && !id?.startsWith('recipe_')) {
-          found = recipes.find(r => r.id === `recipe_${id}`);
-        }
-
-        if (!found) {
-          console.log('Recipe not found. ID:', id);
-          console.log('Available recipes:', recipes.map(r => r.id));
-          setError('Recipe not found');
-        } else {
-          setRecipe(found);
-        }
+      const found = await getRecipeById(id);
+      
+      if (!found) {
+        console.log('Recipe not found. ID:', id);
+        setError('Recipe not found');
+        setTimeout(() => {
+          router.replace('/(tabs)');
+        }, 2000);
       } else {
-        setError('No recipes found');
+        setRecipe(found);
       }
     } catch (error) {
       console.error('Error loading recipe:', error);
@@ -54,6 +37,18 @@ export default function RecipeDetail() {
       setIsLoading(false);
     }
   };
+
+  // Load recipe on mount and when id changes
+  useEffect(() => {
+    loadRecipe();
+  }, [id]);
+
+  // Reload recipe when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadRecipe();
+    }, [id])
+  );
 
   const handleDelete = async () => {
     Alert.alert(
@@ -66,13 +61,8 @@ export default function RecipeDetail() {
           style: "destructive",
           onPress: async () => {
             try {
-              const storedRecipes = await AsyncStorage.getItem('recipes');
-              if (storedRecipes) {
-                const recipes: Recipe[] = JSON.parse(storedRecipes);
-                const updatedRecipes = recipes.filter(r => r.id !== id);
-                await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
-                router.back();
-              }
+              await deleteRecipe(id);
+              router.replace('/(tabs)');
             } catch (error) {
               console.error('Error deleting recipe:', error);
               Alert.alert('Error', 'Failed to delete recipe');
@@ -125,21 +115,21 @@ Shared from TastyTabs
     if (!recipe) return;
 
     try {
-      const storedRecipes = await AsyncStorage.getItem('recipes');
-      if (storedRecipes) {
-        const recipes: Recipe[] = JSON.parse(storedRecipes);
-        const updatedRecipes = recipes.map(r => 
-          r.id === recipe.id
-            ? { ...r, isFavorite: !r.isFavorite }
-            : r
-        );
-        await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
-        setRecipe({ ...recipe, isFavorite: !recipe.isFavorite });
-      }
+      await toggleFavoriteRecipe(recipe.id);
+      setRecipe({ ...recipe, isFavorite: !recipe.isFavorite });
     } catch (error) {
       console.error('Error toggling favorite:', error);
       Alert.alert('Error', 'Failed to update favorite status');
     }
+  };
+
+  // Add a handler for edit navigation
+  const handleEdit = () => {
+    if (!recipe) return;
+    router.push({
+      pathname: '/(tabs)/add/new',
+      params: { id: recipe.id }
+    });
   };
 
   if (isLoading) {
@@ -206,6 +196,12 @@ Shared from TastyTabs
                 <ThemedText style={[styles.headerButtonText, recipe.isFavorite && styles.favoriteActive]}>
                   {recipe.isFavorite ? '★' : '☆'}
                 </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={handleEdit}
+                style={styles.headerButton}
+              >
+                <ThemedText style={styles.headerButtonText}>Edit</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
                 <ThemedText style={styles.headerButtonText}>Share</ThemedText>
@@ -297,10 +293,7 @@ Shared from TastyTabs
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={[styles.button, styles.editButton]}
-              onPress={() => router.push({
-                pathname: "/(tabs)/add",
-                params: { id }
-              })}>
+              onPress={handleEdit}>
               <ThemedText style={styles.buttonText}>Edit Recipe</ThemedText>
             </TouchableOpacity>
 

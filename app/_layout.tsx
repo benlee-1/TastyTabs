@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { initDatabase } from './services/db';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -22,6 +23,17 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initDatabase();
+      } catch (error) {
+        console.error('Error initializing database:', error);
+      }
+    };
+    init();
+  }, []);
 
   if (!loaded) {
     return null;

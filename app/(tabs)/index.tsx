@@ -1,14 +1,15 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, View, TextInput, ScrollView, Dimensions } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Stack } from 'expo-router';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Logo } from '@/components/Logo';
-import { Recipe, DEFAULT_CATEGORIES } from '@/types/Recipe';
+import { Recipe, DEFAULT_CATEGORIES } from '@/app/types/Recipe';
+import { getAllRecipes, toggleFavoriteRecipe, deleteRecipe as deleteRecipeFromDb } from '@/app/services/db';
 
 export default function RecipeList() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -20,41 +21,26 @@ export default function RecipeList() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
 
-  useEffect(() => {
-    loadRecipes();
-  }, []);
+  // Load recipes when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Screen focused, loading recipes...');
+      loadRecipes();
+    }, [])
+  );
 
   useEffect(() => {
     filterRecipes();
   }, [searchQuery, recipes, selectedCategory, showFavorites]);
 
   const loadRecipes = async () => {
+    console.log('Loading recipes...');
     setIsLoading(true);
     setError(null);
     try {
-      const storedRecipes = await AsyncStorage.getItem('recipes');
-      if (storedRecipes) {
-        let recipes: Recipe[] = JSON.parse(storedRecipes);
-        
-        // Migrate old recipe IDs to new format
-        let hasChanges = false;
-        recipes = recipes.map(recipe => {
-          if (!recipe.id.startsWith('recipe_')) {
-            hasChanges = true;
-            return { ...recipe, id: `recipe_${recipe.id}` };
-          }
-          return recipe;
-        });
-        
-        // Save migrated recipes if any changes were made
-        if (hasChanges) {
-          await AsyncStorage.setItem('recipes', JSON.stringify(recipes));
-        }
-
-        // Sort recipes by creation date (newest first)
-        recipes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setRecipes(recipes);
-      }
+      const loadedRecipes = await getAllRecipes();
+      console.log('Loaded recipes:', loadedRecipes);
+      setRecipes(loadedRecipes);
     } catch (error) {
       console.error('Error loading recipes:', error);
       setError('Failed to load recipes');
@@ -98,13 +84,8 @@ export default function RecipeList() {
 
   const toggleFavorite = async (recipeId: string) => {
     try {
-      const updatedRecipes = recipes.map(recipe =>
-        recipe.id === recipeId
-          ? { ...recipe, isFavorite: !recipe.isFavorite }
-          : recipe
-      );
-      setRecipes(updatedRecipes);
-      await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+      await toggleFavoriteRecipe(recipeId);
+      await loadRecipes(); // Reload recipes to get updated data
     } catch (error) {
       console.error('Error toggling favorite:', error);
       Alert.alert('Error', 'Failed to update favorite status');
@@ -113,9 +94,8 @@ export default function RecipeList() {
 
   const deleteRecipe = async (recipeId: string) => {
     try {
-      const updatedRecipes = recipes.filter(recipe => recipe.id !== recipeId);
-      setRecipes(updatedRecipes);
-      await AsyncStorage.setItem('recipes', JSON.stringify(updatedRecipes));
+      await deleteRecipeFromDb(recipeId);
+      await loadRecipes(); // Reload recipes to get updated data
     } catch (error) {
       console.error('Error deleting recipe:', error);
       Alert.alert('Error', 'Failed to delete recipe');
@@ -146,6 +126,18 @@ export default function RecipeList() {
     setError(null);
     setIsLoading(true);
     loadRecipes();
+  };
+
+  const handleAddRecipe = () => {
+    // Force a fresh add page by replacing the current route
+    router.replace('/(tabs)/add/new');
+  };
+
+  const handleEditRecipe = (recipeId: string) => {
+    router.push({
+      pathname: '/(tabs)/add/new',
+      params: { id: recipeId }
+    });
   };
 
   const renderCategory = ({ item }: { item: string }) => (
@@ -280,7 +272,17 @@ export default function RecipeList() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen
+          options={{
+            headerTitle: () => <Logo />,
+            headerRight: () => (
+              <TouchableOpacity onPress={handleAddRecipe} style={styles.addButton}>
+                <ThemedText style={styles.addButtonText}>+</ThemedText>
+              </TouchableOpacity>
+            ),
+          }}
+        />
         <ThemedView style={styles.container}>
           <View style={styles.header}>
             <Logo size={32} />
@@ -563,6 +565,13 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: 'white',
+    fontSize: 24,
+    fontWeight: '600',
+  },
+  addButton: {
+    padding: 12,
+  },
+  addButtonText: {
     fontSize: 24,
     fontWeight: '600',
   },
