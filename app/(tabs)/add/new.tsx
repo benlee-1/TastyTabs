@@ -3,15 +3,20 @@ import { StyleSheet, TextInput, ScrollView, View, Text, TouchableOpacity, SafeAr
 import { router, useLocalSearchParams } from 'expo-router';
 import { saveRecipe, updateRecipe, getRecipeById, initDatabase } from '@/app/services/db';
 import { Picker } from '@react-native-picker/picker';
-import { DEFAULT_UNITS, DEFAULT_CATEGORIES } from '@/app/types/Recipe';
+import { DEFAULT_UNITS, DEFAULT_CATEGORIES, Ingredient } from '@/app/types/Recipe';
 
 export default function AddRecipe() {
   const params = useLocalSearchParams();
-  const editId = typeof params.id === 'string' ? params.id : undefined;
-  const refresh = params.refresh; // Use this to detect when we want to force a refresh
+  console.log("AddRecipe params:", params);
   
-  const [title, setTitle] = useState('');
-  const [ingredients, setIngredients] = useState<Array<{name: string; amount: string; unit: string}>>([]);
+  // Only use the ID if we're not in refresh mode
+  const refresh = params.refresh ? true : false;
+  const editId = !refresh && typeof params.id === 'string' ? params.id : undefined;
+  
+  console.log("Parsed params:", { refresh, editId });
+  
+  const [title, setTitle] = useState<string>('');
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [instructions, setInstructions] = useState<string[]>([]);
   const [videoLink, setVideoLink] = useState('');
   const [showUnitPicker, setShowUnitPicker] = useState(false);
@@ -28,6 +33,7 @@ export default function AddRecipe() {
 
   // Clear all form fields
   const clearForm = useCallback(() => {
+    console.log("Clearing form");
     setTitle('');
     setIngredients([]);
     setInstructions([]);
@@ -44,23 +50,39 @@ export default function AddRecipe() {
       try {
         await initDatabase();
         
-        // Always clear form first
+        // Always clear form first to ensure fresh state
         clearForm();
         
-        // Then load recipe data if editing
+        // Force form reset when explicitly requesting a refresh or new form
+        if (refresh || params.forceNew === 'true') {
+          console.log("Tab pressed or new form forced, creating fresh form");
+          return;
+        }
+        
+        // For edit mode (with ID)
         if (editId) {
+          console.log("Loading recipe for editing:", editId);
           const recipe = await getRecipeById(editId);
+          
           if (recipe) {
+            console.log("Recipe loaded successfully:", recipe.title);
+            // Set all form values from the recipe
             setTitle(recipe.title);
             setIngredients(recipe.ingredients);
             setInstructions(recipe.instructions);
             setVideoLink(recipe.videoLink || '');
-            setSelectedCategories(recipe.categories);
-            setIsFavorite(recipe.isFavorite);
+            setSelectedCategories(recipe.categories || []);
+            setIsFavorite(recipe.isFavorite || false);
+          } else {
+            console.error("Recipe not found for editing:", editId);
+            Alert.alert("Error", "Recipe not found");
           }
+        } else {
+          console.log("Creating a new recipe (not in edit mode)");
         }
       } catch (error) {
-        console.error('Error initializing:', error);
+        console.error('Error initializing form:', error);
+        Alert.alert("Error", "Failed to load recipe data");
       }
     };
     
@@ -71,7 +93,7 @@ export default function AddRecipe() {
       // Cleanup on unmount
       clearForm();
     };
-  }, [editId, clearForm, refresh]); // Add refresh to dependencies
+  }, [editId, clearForm, refresh, params.forceNew]); // Add forceNew to dependencies
 
   const toggleCategory = (category: string) => {
     setSelectedCategories(prev => {
@@ -151,11 +173,11 @@ export default function AddRecipe() {
     }
 
     setIngredients([...ingredients, { 
-      ...currentIngredient,
       name: currentIngredient.name.trim(),
-      amount: currentIngredient.amount.trim()
+      amount: currentIngredient.amount.trim(),
+      unit: currentIngredient.unit
     }]);
-    setCurrentIngredient({ name: '', amount: '', unit: 'piece' });
+    setCurrentIngredient({ name: '', amount: '', unit: DEFAULT_UNITS[0] });
   };
 
   const removeIngredient = (index: number) => {
@@ -228,8 +250,17 @@ export default function AddRecipe() {
         await updateRecipe(recipeData);
         // Clear form after saving (important!)
         clearForm();
-        // Navigate to the recipe detail
-        router.replace(`/(tabs)/${editId}`);
+        
+        // Handle the navigation after editing
+        console.log("Recipe updated successfully, navigating back");
+        
+        // Force a complete reset by navigating to the recipe detail screen
+        router.replace({
+          pathname: `/(tabs)/${editId}`,
+          params: { 
+            _t: Date.now().toString() // Ensure cache is invalidated
+          }
+        });
       } else {
         await saveRecipe(recipeData);
         // Clear form after saving
@@ -247,7 +278,7 @@ export default function AddRecipe() {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
         <Text style={[styles.sectionTitle, styles.firstSection]}>
-          {editId ? 'Edit Recipe' : 'New Recipe'}
+          {params.edit === 'true' || editId ? 'Edit Recipe' : 'New Recipe'}
         </Text>
         <TextInput
           style={styles.input}

@@ -4,7 +4,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Recipe } from '@/app/types/Recipe';
-import { getRecipeById, deleteRecipe, toggleFavoriteRecipe } from '../services/db';
+import { getRecipeById, deleteRecipe, toggleFavoriteRecipe } from '@/app/services/db';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
@@ -126,9 +126,16 @@ Shared from TastyTabs
   // Add a handler for edit navigation
   const handleEdit = () => {
     if (!recipe) return;
-    router.push({
-      pathname: '/(tabs)/add/new',
-      params: { id: recipe.id }
+    
+    // Use direct navigation to the edit screen
+    console.log(`Navigating to edit recipe: ${recipe.id}`);
+    
+    // Use navigate with a path outside the tab navigation
+    router.navigate({
+      pathname: `/edit/${recipe.id}`, // Use root path outside of tabs
+      params: { 
+        _t: Date.now().toString() // Ensure no cache issues
+      }
     });
   };
 

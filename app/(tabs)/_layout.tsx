@@ -18,10 +18,16 @@ export default function TabLayout() {
         <HapticTab
           {...props}
           onPress={() => {
-            // Force a reset of navigation and params
+            // Force a completely new navigation to reset all state
+            // Use a unique timestamp to ensure the form is always fresh
             router.push({
               pathname: '/(tabs)/add/new',
-              params: { refresh: Date.now() }
+              params: { 
+                refresh: Date.now().toString(),
+                forceNew: 'true', // Special flag to force a new form
+                // Don't include any edit parameters here to ensure
+                // we're always creating a new recipe when tapping the tab
+              }
             });
           }}
         />
@@ -53,11 +59,32 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="add/new"
+        name="add"
         options={{
           title: 'Add Recipe',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="plus.circle.fill" color={color} />,
           tabBarButton: AddRecipeTabButton
+        }}
+      />
+      {/* Hide the dynamic route tabs */}
+      <Tabs.Screen
+        name="[id]"
+        options={{
+          title: 'Recipe Details',
+          href: null,
+          // This completely removes the tab item from the tab bar
+          tabBarItemStyle: { display: 'none' }
+        }}
+      />
+      
+      {/* Hide the edit route */}
+      <Tabs.Screen
+        name="edit/[id]"
+        options={{
+          title: 'Edit Recipe',
+          href: null,
+          // This completely removes the tab item from the tab bar
+          tabBarItemStyle: { display: 'none' }
         }}
       />
     </Tabs>

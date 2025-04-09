@@ -129,8 +129,11 @@ export default function RecipeList() {
   };
 
   const handleAddRecipe = () => {
-    // Force a fresh add page by replacing the current route
-    router.replace('/(tabs)/add/new');
+    // Force a fresh add page by replacing the current route with a refresh param
+    router.replace({
+      pathname: '/(tabs)/add/new',
+      params: { refresh: Date.now() }
+    });
   };
 
   const handleEditRecipe = (recipeId: string) => {
