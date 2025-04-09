@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 
 export default function AddRecipeRedirector() {
@@ -7,24 +7,20 @@ export default function AddRecipeRedirector() {
   
   useEffect(() => {
     // Handle the redirect to the actual add form
-    // while maintaining all parameters
     console.log("ROOT Redirector params:", params);
     
-    const queryParams = {...params};
-    
-    // Small delay to ensure the navigation works properly
-    setTimeout(() => {
-      router.replace({
-        pathname: '/(tabs)/add/new',
-        params: queryParams
-      });
-    }, 50);
+    // Simple redirect without setTimeout
+    router.replace({
+      pathname: '/(tabs)/add/new',
+      params: {...params}
+    });
   }, [params]);
   
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <ActivityIndicator size="large" color="#0a7ea4" />
+      <Stack.Screen options={{ title: 'Recipe', headerShown: true }} />
+      <ActivityIndicator size="large" color="#0a7ea4" style={styles.spinner} />
+      <Text style={styles.loadingText}>Loading...</Text>
     </View>
   );
 }
@@ -36,4 +32,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  spinner: {
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  }
 }); 

@@ -54,8 +54,19 @@ export default function AddRecipe() {
         clearForm();
         
         // Force form reset when explicitly requesting a refresh or new form
+        // OR when clicking the tab button
         if (refresh || params.forceNew === 'true') {
           console.log("Tab pressed or new form forced, creating fresh form");
+          // Remove any edit params from the URL without triggering navigation
+          if (params.edit === 'true' || params.id) {
+            console.log("Removing edit params from URL");
+            // Replace URL without triggering re-render
+            window.history.replaceState(
+              {}, 
+              '', 
+              window.location.pathname + '?refresh=' + Date.now().toString()
+            );
+          }
           return;
         }
         
@@ -93,7 +104,7 @@ export default function AddRecipe() {
       // Cleanup on unmount
       clearForm();
     };
-  }, [editId, clearForm, refresh, params.forceNew]); // Add forceNew to dependencies
+  }, [editId, clearForm, refresh, params.forceNew]);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories(prev => {

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 export default function EditRecipeRoute() {
@@ -14,27 +14,26 @@ export default function EditRecipeRoute() {
       return;
     }
     
-    // Use direct navigation to the add form without affecting tab state
+    // Direct navigation to add/new with the recipe ID
     console.log('Navigating to add screen with ID:', id);
     
-    // Use the universal linking format to avoid tab highlighting
-    setTimeout(() => {
-      router.replace({
-        pathname: '/add/new', // Use root path to avoid tab highlighting
-        params: { 
-          id,
-          edit: 'true', // Flag that we're in edit mode
-          isRootNavigated: 'true', // Special flag for navigation
-          _t: Date.now().toString() // Ensure no caching issues
-        }
-      });
-    }, 10);
+    // Use a more reliable navigation approach
+    router.replace({
+      pathname: '/(tabs)/add/new', // Keep within tabs to avoid navigation issues
+      params: { 
+        id,
+        edit: 'true',
+        _t: Date.now().toString()
+      }
+    });
   }, [id]);
   
-  // Show a minimal loading screen during the redirect
+  // Show a loading screen during the redirect
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: 'Edit Recipe', headerShown: false }} />
+      <Stack.Screen options={{ title: 'Edit Recipe', headerShown: true }} />
+      <ActivityIndicator size="large" color="#0a7ea4" style={styles.loader} />
+      <Text style={styles.loadingText}>Loading recipe...</Text>
       <StatusBar style="auto" />
     </View>
   );
@@ -44,5 +43,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  loader: {
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  }
 }); 

@@ -20,13 +20,11 @@ export default function TabLayout() {
           onPress={() => {
             // Force a completely new navigation to reset all state
             // Use a unique timestamp to ensure the form is always fresh
-            router.push({
+            router.navigate({
               pathname: '/(tabs)/add/new',
               params: { 
                 refresh: Date.now().toString(),
                 forceNew: 'true', // Special flag to force a new form
-                // Don't include any edit parameters here to ensure
-                // we're always creating a new recipe when tapping the tab
               }
             });
           }}
