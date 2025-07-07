@@ -1,11 +1,26 @@
 import * as SQLite from "expo-sqlite";
-import { Recipe } from "@/app/types/Recipe";
+import { Recipe } from "@/app/types/Recipe"; 
 
-const db = SQLite.openDatabaseSync("recipes.db");
+interface DatabaseRecipe {
+  id: string;
+  title: string;
+  ingredients: string;
+  instructions: string;
+  videoLink: string;
+  createdAt: number;
+  categories: string;
+  isFavorite: number;
+}
+
+let db: SQLite.SQLiteDatabase | null = null;
 
 export const initDatabase = async (): Promise<void> => {
   console.log("Initializing database...");
   try {
+    if (!db) {
+      db = await SQLite.openDatabaseAsync("recipes.db");
+    }
+
     await db.execAsync(
       `CREATE TABLE IF NOT EXISTS recipes (
         id TEXT PRIMARY KEY,
@@ -25,29 +40,24 @@ export const initDatabase = async (): Promise<void> => {
   }
 };
 
-// Helper function to escape SQL strings
-const escapeSql = (str: string) => {
-  if (str === null || str === undefined) return "NULL";
-  return `'${str.replace(/'/g, "''")}'`;
-};
-
 export const saveRecipe = async (recipe: Recipe): Promise<void> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Saving recipe:", recipe);
   try {
     const query = `
       INSERT INTO recipes (id, title, ingredients, instructions, videoLink, createdAt, categories, isFavorite)
       VALUES (
-        ${escapeSql(recipe.id)},
-        ${escapeSql(recipe.title)},
-        ${escapeSql(JSON.stringify(recipe.ingredients))},
-        ${escapeSql(JSON.stringify(recipe.instructions))},
-        ${escapeSql(recipe.videoLink || "")},
+        '${recipe.id}',
+        '${recipe.title.replace(/'/g, "''")}',
+        '${JSON.stringify(recipe.ingredients).replace(/'/g, "''")}',
+        '${JSON.stringify(recipe.instructions).replace(/'/g, "''")}',
+        '${(recipe.videoLink || "").replace(/'/g, "''")}',
         ${recipe.createdAt},
-        ${escapeSql(JSON.stringify(recipe.categories))},
+        '${JSON.stringify(recipe.categories).replace(/'/g, "''")}',
         ${recipe.isFavorite ? 1 : 0}
       );
     `;
-    console.log("Executing query:", query);
     await db.execAsync(query);
     console.log("Recipe saved successfully");
   } catch (error) {
@@ -56,23 +66,21 @@ export const saveRecipe = async (recipe: Recipe): Promise<void> => {
   }
 };
 
-interface SQLiteResult {
-  rows: Recipe[];
-}
-
 export const getAllRecipes = async (): Promise<Recipe[]> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Getting all recipes...");
   try {
-    const results = await db.getAllAsync<any>(
+    const results = await db.getAllAsync<DatabaseRecipe>(
       `SELECT * FROM recipes ORDER BY createdAt DESC;`
     );
-    console.log("Retrieved recipes:", results);
-    const recipes = results.map((result) => ({
-      ...result,
-      ingredients: JSON.parse(result.ingredients),
-      instructions: JSON.parse(result.instructions),
-      categories: JSON.parse(result.categories),
-      isFavorite: Boolean(result.isFavorite),
+
+    const recipes = results.map((row) => ({
+      ...row,
+      ingredients: JSON.parse(row.ingredients),
+      instructions: JSON.parse(row.instructions),
+      categories: JSON.parse(row.categories),
+      isFavorite: Boolean(row.isFavorite),
     }));
     console.log("Parsed recipes:", recipes);
     return recipes;
@@ -83,12 +91,14 @@ export const getAllRecipes = async (): Promise<Recipe[]> => {
 };
 
 export const getRecipeById = async (id: string): Promise<Recipe | null> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Getting recipe by id:", id);
   try {
-    const result = await db.getFirstAsync<any>(
-      `SELECT * FROM recipes WHERE id = ${escapeSql(id)};`
+    const result = await db.getFirstAsync<DatabaseRecipe>(
+      `SELECT * FROM recipes WHERE id = '${id.replace(/'/g, "''")}';`
     );
-    console.log("Retrieved recipe:", result);
+
     if (!result) return null;
 
     const recipe = {
@@ -107,9 +117,13 @@ export const getRecipeById = async (id: string): Promise<Recipe | null> => {
 };
 
 export const deleteRecipe = async (id: string): Promise<void> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Deleting recipe:", id);
   try {
-    await db.execAsync(`DELETE FROM recipes WHERE id = ${escapeSql(id)};`);
+    await db.execAsync(
+      `DELETE FROM recipes WHERE id = '${id.replace(/'/g, "''")}';`
+    );
     console.log("Recipe deleted successfully");
   } catch (error) {
     console.error("Error deleting recipe:", error);
@@ -118,12 +132,15 @@ export const deleteRecipe = async (id: string): Promise<void> => {
 };
 
 export const toggleFavoriteRecipe = async (id: string): Promise<void> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Toggling favorite for recipe:", id);
   try {
     await db.execAsync(
-      `UPDATE recipes SET isFavorite = NOT isFavorite WHERE id = ${escapeSql(
-        id
-      )};`
+      `UPDATE recipes SET isFavorite = NOT isFavorite WHERE id = '${id.replace(
+        /'/g,
+        "''"
+      )}';`
     );
     console.log("Recipe favorite toggled successfully");
   } catch (error) {
@@ -133,20 +150,30 @@ export const toggleFavoriteRecipe = async (id: string): Promise<void> => {
 };
 
 export const updateRecipe = async (recipe: Recipe): Promise<void> => {
+  if (!db) throw new Error("Database not initialized");
+
   console.log("Updating recipe:", recipe);
   try {
     const query = `
       UPDATE recipes 
-      SET title = ${escapeSql(recipe.title)},
-          ingredients = ${escapeSql(JSON.stringify(recipe.ingredients))},
-          instructions = ${escapeSql(JSON.stringify(recipe.instructions))},
-          videoLink = ${escapeSql(recipe.videoLink || "")},
-          categories = ${escapeSql(JSON.stringify(recipe.categories))},
+      SET title = '${recipe.title.replace(/'/g, "''")}',
+          ingredients = '${JSON.stringify(recipe.ingredients).replace(
+            /'/g,
+            "''"
+          )}',
+          instructions = '${JSON.stringify(recipe.instructions).replace(
+            /'/g,
+            "''"
+          )}',
+          videoLink = '${(recipe.videoLink || "").replace(/'/g, "''")}',
+          categories = '${JSON.stringify(recipe.categories).replace(
+            /'/g,
+            "''"
+          )}',
           isFavorite = ${recipe.isFavorite ? 1 : 0},
           createdAt = ${recipe.createdAt}
-      WHERE id = ${escapeSql(recipe.id)};
+      WHERE id = '${recipe.id.replace(/'/g, "''")}';
     `;
-    console.log("Executing update query:", query);
     await db.execAsync(query);
     console.log("Recipe updated successfully");
   } catch (error) {
